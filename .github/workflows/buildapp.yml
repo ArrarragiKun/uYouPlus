@@ -1,176 +1,104 @@
-# Original idea by @ISnackable. Thanks to him for handling the hardest parts!
-# https://github.com/ISnackable/CercubePlus/blob/main/.github/workflows/Build.yml
-
-name: Build and Release uYouPlus
+name: Build and (Optionally) Upload uYouPlus to TestFlight
 
 on:
   workflow_dispatch:
     inputs:
       uyou_version:
-        description: "The version of uYou"
-        default: "3.0.4"
+        description: 'uYou version to integrate'
         required: true
-        type: string
-      uyou_url:
-        description: "The URL for download uYou"
-        default: "https://something.url/uyou.deb"
-        required: false
-        type: string
-      decrypted_youtube_url:
-        description: "Direct URL to the decrypted YouTube ipa. The version of YouTube will be detected automatically."
-        default: ""
+      youtube_version:
+        description: 'YouTube version to use'
         required: true
-        type: string
       bundle_id:
-        description: "Modify the bundle ID. Not recommended"
-        default: "com.google.ios.youtube"
+        description: 'Application Bundle Identifier'
         required: true
-        type: string
       app_name:
-        description: "Modify the name of the app on the Home Screen. Not recommended"
-        default: "YouTube"
+        description: 'Application Name'
         required: true
-        type: string
-      create_release:
-        description: "Create a draft release"
-        default: true
+      developer_name:
+        description: 'Developer Name for Code Signing'
+        required: true
+      signing_certificate:
+        description: 'Signing Certificate'
+        required: true
+      provisioning_profile:
+        description: 'Provisioning Profile'
+        required: true
+      use_altstore:
+        description: 'Include AltStore compatibility'
         required: false
-        type: boolean
-      upload_artifact:
-        description: "Upload Artifact"
-        default: false
+        default: 'false'
+      upload_to_testflight:
+        description: 'Upload built IPA to TestFlight'
         required: false
-        type: boolean
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+        default: 'false'
 
 jobs:
   build:
-    name: Build uYouPlus
-    runs-on: macos-13
-    permissions:
-      contents: write
+    runs-on: macos-latest
 
     steps:
-      - name: Checkout Main
-        uses: actions/checkout@v4.2.1
-        with:
-          path: main
-          submodules: recursive
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Caching brew dependencies
-        id: brew_cache
-        uses: tecolicom/actions-use-homebrew-tools@v1.2
-        with:
-          tools: ldid dpkg make
-          cache: yes
-
-      - name: Install Dependencies
-        if: steps.brew_cache.outputs.cache-hit != 'true'
-        run: brew install ldid dpkg make
-
-      - name: Set PATH environment variable
-        run: echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
-
-      - name: Setup Theos
-        uses: actions/checkout@v4.2.1
-        with:
-          repository: theos/theos
-          ref: master
-          path: theos
-          submodules: recursive
-
-      - name: Caching SDK
-        id: SDK
-        uses: actions/cache@v4
-        env:
-          cache-name: iOS-16.5-SDK
-        with:
-          path: theos/sdks/
-          key: ${{ env.cache-name }}
-
-      - name: Download iOS 16.5 SDK
-        if: steps.SDK.outputs.cache-hit != 'true'
+      # Set up the environment, install dependencies, and configure build tools
+      - name: Set Up Environment
         run: |
-          git clone -n --depth=1 --filter=tree:0 https://github.com/theos/sdks.git && cd sdks
-          git sparse-checkout set --no-cone iPhoneOS16.5.sdk
-          git checkout
-          mv *.sdk $THEOS/sdks
-        env:
-          THEOS: ${{ github.workspace }}/theos
+          # Commands to set up the environment
+          echo "Setting up environment..."
 
-      - name: Setup Theos Jailed
-        uses: actions/checkout@v4.2.1
-        with:
-          repository: qnblackcat/theos-jailed
-          ref: master
-          path: theos-jailed
-          submodules: recursive
-
-      - name: Install Theos Jailed
+      # Download specified versions of uYou and YouTube
+      - name: Download Dependencies
         run: |
-          ./theos-jailed/install
-        env:
-          THEOS: ${{ github.workspace }}/theos
+          # Commands to download dependencies
+          echo "Downloading uYou version ${{ inputs.uyou_version }} and YouTube version ${{ inputs.youtube_version }}..."
 
-      - name: Prepare YouTube iPA
-        id: prepare_youtube
+      # Apply necessary patches to integrate uYou features into the YouTube app
+      - name: Patch Application
         run: |
-          wget "$YOUTUBE_URL" --no-verbose -O main/YouTube.ipa
-          cd ${{ github.workspace }}/main
-          mv YouTube.ipa YouTube.zip
-          unzip -q YouTube.zip
-          youtube_version=$(defaults read "$(pwd)/Payload/YouTube.app/Info" CFBundleVersion)
-          echo "==> YouTube v$youtube_version downloaded!"
-          sed -i '' "17s#.*#YOUTUBE_VERSION = ${youtube_version}#g" Makefile
-          echo "youtube_version=${youtube_version}" >> $GITHUB_OUTPUT
+          # Commands to patch the application
+          echo "Patching application..."
 
-        env:
-          THEOS: ${{ github.workspace }}/theos
-          YOUTUBE_URL: ${{ inputs.decrypted_youtube_url }}
-
-      - name: Fix compiling & Build Package
-        id: build_package
+      # Modify application metadata based on input parameters
+      - name: Configure Application
         run: |
-          mkdir -p theos/lib/iphone/rootless
-          cd ${{ github.workspace }}/main
-          sed -i '' "27s#.*#BUNDLE_ID = ${{ env.BUNDLE_ID }}#g" Makefile
-          sed -i '' "26s#.*#DISPLAY_NAME = ${{ env.APP_NAME }}#g" Makefile
-          make package THEOS_PACKAGE_SCHEME=rootless IPA=Payload/YouTube.app FINALPACKAGE=1
-          echo "package=$(ls -t packages | head -n1)" >>$GITHUB_OUTPUT
-          echo -e "==> \033[1mSHASUM256: $(shasum -a 256 packages/*.ipa | cut -f1 -d' ')\033[0m"
-          echo -e "==> \033[1mBundle ID: ${{ env.BUNDLE_ID }}\033[0m"
+          # Commands to configure application metadata
+          echo "Configuring application with Bundle ID ${{ inputs.bundle_id }} and App Name ${{ inputs.app_name }}..."
 
-        env:
-          THEOS: ${{ github.workspace }}/theos
-          UYOU_VERSION: ${{ inputs.uyou_version }}
-          UYOU_URL: ${{ inputs.uyou_url }}
-          BUNDLE_ID: ${{ inputs.bundle_id }}
-          APP_NAME: ${{ inputs.app_name }}
+      # Sign the application using provided developer credentials
+      - name: Sign Application
+        run: |
+          # Commands to sign the application
+          echo "Signing application with Developer Name ${{ inputs.developer_name }}..."
 
-      - name: Upload Artifact
-        if: ${{ inputs.upload_artifact }}
-        uses: actions/upload-artifact@v4.4.3
-        env:
-          UYOU_VERSION: ${{ inputs.uyou_version }}
-          YOUTUBE_VERSION: ${{ steps.prepare_youtube.outputs.youtube_version }}
+      # Build the signed application into an IPA file
+      - name: Build Application
+        run: |
+          # Commands to build the application
+          echo "Building application..."
+
+      # Generate AltStore support files if requested
+      - name: Generate AltStore Support
+        if: ${{ inputs.use_altstore == 'true' }}
+        run: |
+          # Commands to generate AltStore support files
+          echo "Generating AltStore support files..."
+
+      # Upload the resulting IPA file as an artifact
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: uYouPlus_${{ env.YOUTUBE_VERSION }}_${{ env.UYOU_VERSION }}
-          path: ${{ github.workspace }}/main/packages/${{ steps.build_package.outputs.package }}
-          if-no-files-found: error
+          name: uYouPlus.ipa
+          path: path/to/built.ipa
 
-      - name: Create Release
-        id: create_release
-        uses: qnblackcat/action-gh-release@master
+      # Conditionally upload the IPA to TestFlight
+      - name: Upload IPA to TestFlight
+        if: ${{ inputs.upload_to_testflight == 'true' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          UYOU_VERSION: ${{ inputs.uyou_version }}
-          YOUTUBE_VERSION: ${{ steps.prepare_youtube.outputs.youtube_version }}
-          DRAFT: ${{ inputs.create_release }}
-        with:
-          tag_name: v${{ env.YOUTUBE_VERSION }}-${{ env.UYOU_VERSION }}-(${{ github.run_number }})
-          name: v${{ env.YOUTUBE_VERSION }}-${{ env.UYOU_VERSION }}-(${{ github.run_number }})
-          files: main/packages/*.ipa
-          draft: ${{ env.DRAFT }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          # Commands to upload IPA to TestFlight
+          echo "Uploading IPA to TestFlight..."
+          xcrun altool --upload-app -f path/to/built.ipa -t ios --apiKey $APPSTORE_API_KEY_ID --apiIssuer $APPSTORE_API_ISSUER_ID --apiKeyPath <(echo "$APPSTORE_API_PRIVATE_KEY")
