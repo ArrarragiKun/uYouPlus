@@ -44,54 +44,44 @@ jobs:
       # Set up the environment, install dependencies, and configure build tools
       - name: Set Up Environment
         run: |
-          # Commands to set up the environment
           echo "Setting up environment..."
 
       # Download specified versions of uYou and YouTube
       - name: Download Dependencies
         run: |
-          # Commands to download dependencies
           echo "Downloading uYou version ${{ inputs.uyou_version }} and YouTube version ${{ inputs.youtube_version }}..."
 
       # Apply necessary patches to integrate uYou features into the YouTube app
       - name: Patch Application
         run: |
-          # Commands to patch the application
           echo "Patching application..."
 
       # Modify application metadata based on input parameters
       - name: Configure Application
         run: |
-          # Commands to configure application metadata
           echo "Configuring application with Bundle ID ${{ inputs.bundle_id }} and App Name ${{ inputs.app_name }}..."
 
       # Sign the application using provided developer credentials
       - name: Sign Application
         run: |
-          # Commands to sign the application
           echo "Signing application with Developer Name ${{ inputs.developer_name }}..."
 
       # Build the signed application into an IPA file
       - name: Build Application
         run: |
-          # Commands to build the application
-          echo "Building application..."
+          xcodebuild -workspace YourApp.xcworkspace \
+          -scheme YourApp \
+          -archivePath build/YourApp.xcarchive archive
+          xcodebuild -exportArchive -archivePath build/YourApp.xcarchive \
+          -exportPath build -exportOptionsPlist exportOptions.plist
 
-      # Generate AltStore support files if requested
-      - name: Generate AltStore Support
-        if: ${{ inputs.use_altstore == 'true' }}
+      # Debug Step: Find the built IPA file location
+      - name: Debug IPA Path
         run: |
-          # Commands to generate AltStore support files
-          echo "Generating AltStore support files..."
+          echo "Checking IPA file location..."
+          find ${{ github.workspace }} -name "*.ipa"
 
-      # Upload the resulting IPA file as an artifact
-      - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: uYouPlus.ipa
-          path: path/to/built.ipa
-
-      # Conditionally upload the IPA to TestFlight
+      # Upload IPA to TestFlight (only if upload_to_testflight == true)
       - name: Upload IPA to TestFlight
         if: ${{ inputs.upload_to_testflight == 'true' }}
         env:
@@ -99,6 +89,9 @@ jobs:
           APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
         run: |
-          # Commands to upload IPA to TestFlight
-          echo "Uploading IPA to TestFlight..."
-          xcrun altool --upload-app -f path/to/built.ipa -t ios --apiKey $APPSTORE_API_KEY_ID --apiIssuer $APPSTORE_API_ISSUER_ID --apiKeyPath <(echo "$APPSTORE_API_PRIVATE_KEY")
+          IPA_PATH=$(find ${{ github.workspace }} -name "*.ipa" | head -n 1)
+          echo "Found IPA at: $IPA_PATH"
+          echo "$APPSTORE_API_PRIVATE_KEY" > private_key.p8
+          xcrun altool --upload-app -f "$IPA_PATH" -t ios \
+            --apiKey "$APPSTORE_API_KEY_ID" --apiIssuer "$APPSTORE_API_ISSUER_ID" \
+            --private-key private_key.p8
