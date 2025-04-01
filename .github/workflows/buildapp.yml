@@ -4,19 +4,38 @@ on:
   workflow_dispatch:
     inputs:
       uyou_version:
-        description: 'uYou version to integrate'
+        description: "The version of uYou"
+        default: "3.0.3"
         required: true
-      youtube_version:
-        description: 'YouTube version to use'
+        type: string
+      decrypted_youtube_url:
+        description: "Direct URL to the decrypted YouTube ipa. The version of YouTube will be detected automatically."
+        default: ""
         required: true
+        type: string
       bundle_id:
-        description: 'Application Bundle Identifier'
+        description: "Modify the bundle ID. Not recommended"
+        default: "com.google.ios.youtube"
         required: true
+        type: string
       app_name:
-        description: 'Application Name'
+        description: "Modify the name of the app on the Home Screen. Not recommended"
+        default: "YouTube"
         required: true
+        type: string
+      create_release:
+        description: "Create a draft release"
+        default: true
+        required: false
+        type: boolean
+      upload_artifact:
+        description: "Upload Artifact"
+        default: true
+        required: false
+        type: boolean
       developer_name:
         description: 'Developer Name for Code Signing'
+        default: "Sai Vasanth Nanduri"
         required: true
       signing_certificate:
         description: 'Signing Certificate'
